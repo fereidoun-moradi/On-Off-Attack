@@ -57,41 +57,37 @@ reactiveclass MalTrxGenerator(5) {
     }
 }
 
-reactiveclass Manager(10) {
+reactiveclass Manager(100) {
     knownrebecs {
 		OEM oem1;
 		OEM oem2;
-		MalSp oem3;
+		OEM oem3;
+		MalSp oem4;	
     }
     statevars {
-    	int random;
+    	int IDB;
     }
-    msgsrv selectRandomly(int ext){
+    Manager() { //Note: It generate Block ID
+    	IDB = -1;
+    }
+    
+    msgsrv selectID(int mId){
     	// there are 3 miner so it choose a random value among them
-    	if(ext == 0) {
-    		random = ?(1,2,3);
-    		if(random == 1){ oem1.buildblk();}
-    		if(random == 2){ oem2.buildblk();}
-    		if(random == 3){ oem3.buildblk();}
+    	IDB ++;
+    	if(mId == 1) {
+			oem1.buildblk(IDB);
     	}
-    	if(ext == 1){
-    		random = ?(2,3);
-    		if(random == 2){ oem2.buildblk();}
-    		if(random == 3){ oem3.buildblk();}
+    	if(mId == 2) {
+			oem2.buildblk(IDB);
     	}
-    	if(ext == 2){
-    		random = ?(1,3);
-    		if(random == 1){ oem1.buildblk();}
-    		if(random == 3){ oem3.buildblk();}
+     	if(mId == 3) {
+			oem3.buildblk(IDB);
     	}
-    	if(ext == 3){
-    		random = ?(1,2);
-    		if(random == 1){ oem1.buildblk();}
-    		if(random == 2){ oem2.buildblk();}
+    	if(mId == 4) {
+			oem4.buildblk(IDB);
     	}
-    }
  }
-
+}
 
 // honest miner
 reactiveclass OEM(150) {
@@ -114,10 +110,13 @@ reactiveclass OEM(150) {
 		int blockId;
 		int randomSelection;
 		boolean send; 
-		int k, j, p, h;
+		int k, j, p, h, q;
+		int as;
 		boolean check;
 		boolean go;
 		boolean injection;
+		boolean assertionfail;
+		int [30][3]Ack;
     }
     OEM(int myId) {
     	mId = myId;
@@ -126,9 +125,11 @@ reactiveclass OEM(150) {
 		k = 0;
 		j = 0;
 		ctrTrx = 0;
+		q = 50;
 		p = 70;
 		go = true;
 		send = true;
+		assertionfail = false;
 		for (int l = 0; l < 5; l++) {
   				trustRate[l] = 0;
 		}
@@ -137,7 +138,7 @@ reactiveclass OEM(150) {
   				pendingPool[l][1] = 0;
   				pendingPool[l][2] = 0;
 		}
-		for (int l = 0; l < 50; l++) 
+		for (int l = 0; l < q; l++) 
 			for(int m = 0; m < 8; m++){
   				BC[l][m] = 0;
 		}
@@ -145,7 +146,12 @@ reactiveclass OEM(150) {
 			uidtx[l] = 0;
 			tx[l] = 0;
 			 
-		}		
+		}	
+		for (int l = 0; l < 30; l++) {
+  				Ack[l][0] = 0;
+  				Ack[l][1] = 0;
+  				Ack[l][2] = 0;
+		}	
     }
     msgsrv sendTx(int utx, int idTx) {
     	// It checks if this trx was already validated and has been inserted to the pending pool
@@ -175,7 +181,7 @@ reactiveclass OEM(150) {
   							oem3.sendTx(utx, idTx);
   							if ((ctrTrx > 2) && (nBlk < 3) && (send == true)) {
   								nBlk ++; 
-  								mgr.selectRandomly(0);
+  								mgr.selectID(mId);
   								send = false;
   							} /*else mgr.selectRandomly(mId);*/
   							break;
@@ -184,7 +190,9 @@ reactiveclass OEM(150) {
     	    }
     	}
     }
-    msgsrv buildblk() {	
+    msgsrv buildblk(int id) {
+    		k = id;
+    		blockId = id;	
     		h = 0;
     		go = true;
     		for (int l = 0; l < p; l++) {
@@ -218,12 +226,13 @@ reactiveclass OEM(150) {
   				oem1.addtoBC(mId, blockId, uidtx[0], tx[0], uidtx[1], tx[1], uidtx[2], tx[2]);
   				oem2.addtoBC(mId, blockId, uidtx[0], tx[0], uidtx[1], tx[1], uidtx[2], tx[2]);
   				oem3.addtoBC(mId, blockId, uidtx[0], tx[0], uidtx[1], tx[1], uidtx[2], tx[2]);
-  				blockId = blockId + 1;
-				k = k + 1;
+  				//blockId = blockId + 1;
+				//k = k + 1;
   			}
   			send = true;
     }
     msgsrv addtoBC(int mid, int blockid, int uidtx1, int tx1, int uidtx2, int tx2, int uidtx3, int tx3) {
+		k = blockid;
 		for (int l = 0; l < p; l++) {
   			if (pendingPool[l][0] == uidtx1 && pendingPool[l][1] == tx1 && pendingPool[l][2] != 999) {
   					pendingPool[l][2] = 999;
@@ -260,8 +269,8 @@ reactiveclass OEM(150) {
 					u.updateBn();		
     			} else trustRate[mid] = trustRate[mid] - 1;
     		}
-		k = k + 1;
-		blockId = blockId + 1;
+		//k = k + 1;
+		//blockId = blockId + 1;
     	} else 
     			if (trustRate[mid] == 1) {
     				if ((uidtx2 < 10) && (uidtx3 < 10)) {
@@ -275,12 +284,15 @@ reactiveclass OEM(150) {
 							BC[k][6] = uidtx3;
 							BC[k][7] = tx3;	
 							trustRate[mid] = trustRate[mid] + 1;
-							u.updateBn();	
+							u.updateBn();
+							oem1.ack(mId,uidtx1,tx1);
+    						oem2.ack(mId,uidtx1,tx1);
+    						oem3.ack(mId,uidtx1,tx1);	
     					} else trustRate[mid] = trustRate[mid] - 1;
     					if ((tx1 >= 10)) {injection = true;}
     				}
-    				k = k + 1;
-    				blockId = blockId + 1;
+    				//k = k + 1;
+    				//blockId = blockId + 1;
     			} else 
     	if (trustRate[mid] == 2) { 
     	  	randomSelection = ?(1,2,3);
@@ -295,7 +307,13 @@ reactiveclass OEM(150) {
 						BC[k][5] = tx2;
 						BC[k][6] = uidtx3;
 						BC[k][7] = tx3;
-						u.updateBn();	
+						u.updateBn();
+						oem1.ack(mId,uidtx1,tx1);
+						oem1.ack(mId,uidtx2,tx2);
+    					oem2.ack(mId,uidtx1,tx1);
+    					oem2.ack(mId,uidtx2,tx2);
+    					oem3.ack(mId,uidtx1,tx1);
+    					oem3.ack(mId,uidtx2,tx2);	
 						//trustRate[mid] = trustRate[mid] + 1;	
     				} else trustRate[mid] = trustRate[mid] - 1;
     				if ((tx2 >= 10) || (tx1 >= 10)) {injection = true;}
@@ -312,7 +330,13 @@ reactiveclass OEM(150) {
 						BC[k][5] = tx2;
 						BC[k][6] = uidtx3;
 						BC[k][7] = tx3;
-						u.updateBn();	
+						u.updateBn();
+						oem1.ack(mId,uidtx1,tx1);
+						oem1.ack(mId,uidtx3,tx3);
+    					oem2.ack(mId,uidtx1,tx1);
+    					oem2.ack(mId,uidtx3,tx3);
+    					oem3.ack(mId,uidtx1,tx1);
+    					oem3.ack(mId,uidtx3,tx3);	
 						//trustRate[mid] = trustRate[mid] + 1;	
     				} else trustRate[mid] = trustRate[mid] - 1;
     				if ((tx1 >= 10) || (tx3 >= 10)) {injection = true;}
@@ -329,27 +353,52 @@ reactiveclass OEM(150) {
 						BC[k][5] = tx2;
 						BC[k][6] = uidtx3;
 						BC[k][7] = tx3;
-						u.updateBn();	
+						u.updateBn();
+						oem1.ack(mId,uidtx2,tx2);
+						oem1.ack(mId,uidtx3,tx3);
+    					oem2.ack(mId,uidtx2,tx2);
+    					oem2.ack(mId,uidtx3,tx3);
+    					oem3.ack(mId,uidtx2,tx2);
+    					oem3.ack(mId,uidtx3,tx3);	
 						//trustRate[mid] = trustRate[mid] + 1;	
     				} else trustRate[mid] = trustRate[mid] - 1;
     				if ((tx2 >= 10) || (tx3 >= 10)) {injection = true;}
     			}
     		}	
-    	k = k + 1;
-    	blockId = blockId + 1;
+    	//k = k + 1;
+    	//blockId = blockId + 1;
         }
         send = true;
         if (blockId % 2 == 0) {
        		nBlk = 1;
        		}
-       	if ((ctrTrx > 2) && (nBlk < 3)) { nBlk ++; self.buildblk();}
+       	if ((ctrTrx > 2) && (nBlk < 3)) { nBlk ++; mgr.selectID(mId);}
        	/*if ((ctrTrx > 2) && (nBlk < 3) && (send == true)) {
   			nBlk ++; 
   			mgr.selectRandomly(0);
   			send = false;
   			} else mgr.selectRandomly(mId);*/
        	
-       }	
+       }
+       msgsrv ack(int m, int utx1, int idTx1){
+    	for (int l = 0; l < 30; l++){
+			if((Ack[l][0]!= m) && (Ack[l][1]!= utx1) && (Ack[l][2]!= idTx1)){
+			 	if(Ack[l][0]== 0){
+			 		Ack[l][0]= m; 
+			 		Ack[l][1]= utx1; 
+			 		Ack[l][2]= idTx1; 
+			 		break;
+			 		}
+				}
+			}
+		as = 0;
+		for (int d = 0; d < 30; d++){
+			if((Ack[d][1]== utx1) && (Ack[d][2]== idTx1)){
+			as++;
+			}
+		}
+		if (as == 3) {assertionfail= true;}		
+    	}	
 }
 
 
@@ -366,9 +415,9 @@ reactiveclass MalSp(150) {
     }
     statevars {
 		int mId;
-		int [20][8]BC; // minerID, BlockkID, utx1, tx1, utx2, tx2, utx3, tx3
-		int [30][3]pendingPool;// pending pool of valid transactions
-		int p;
+		int [50][8]BC; // minerID, BlockkID, utx1, tx1, utx2, tx2, utx3, tx3
+		int [70][3]pendingPool;// pending pool of valid transactions
+		int p, q, as;
 		int delay;
 		int blockId;
 		int k;
@@ -384,6 +433,8 @@ reactiveclass MalSp(150) {
 		int nBlk;
 		int ctrMTrx;
 		boolean injection;
+		boolean assertionfail;
+		int [30][3]Ack;
     }
     MalSp(int myId) {
     	mId = myId;
@@ -391,9 +442,11 @@ reactiveclass MalSp(150) {
 		k = 0;
 		j = 0;
 		ctrTrx = 0;
-		p = 30;
+		p = 70;
+		q = 50;
 		go = true;
 		send = true;
+		assertionfail = false;
 		nBlk = 1;
 		ctrMTrx = 0;
 		trustRate[0] = 0;
@@ -420,6 +473,11 @@ reactiveclass MalSp(150) {
 			uidtx[l] = 0;
 			tx[l] = 0;
 			 
+		}
+		for (int l = 0; l < 30; l++) {
+  				Ack[l][0] = 0;
+  				Ack[l][1] = 0;
+  				Ack[l][2] = 0;
 		}
 		
     }
@@ -454,7 +512,7 @@ reactiveclass MalSp(150) {
   							if ((ctrTrx > 2) && (nBlk < 3) && (send == true)) {
   								nBlk ++; 
   								//self.buildblk();
-  								mgr.selectRandomly(0);
+  								mgr.selectID(mId);
   								send = false;
   							} /*else mgr.selectRandomly(mId);*/
   							break;
@@ -468,14 +526,16 @@ reactiveclass MalSp(150) {
   							pendingPool[l][1] = idTx;
   							pendingPool[l][2] = 111;
   							ctrMTrx++;
-  							if (((ctrTrx + ctrMTrx) > 2) && (nBlk < 3) && (trustRate[2] == 2) && (injection == false) ) {nBlk ++; self.buildblk(); }
+  							if (((ctrTrx + ctrMTrx) > 2) && (nBlk < 3) && (trustRate[2] == 2) && (injection == false) ) {nBlk ++; mgr.selectID(mId); }
   							injection = true;
   							break;
   						}
   			  	 }
     	}
     }
-    msgsrv buildblk() {	
+    msgsrv buildblk(int id) {
+    		k = id;
+    		blockId = id;	
     		h = 0;
     		go = true;
     	if (trustRate[2] == 2) {
@@ -530,12 +590,13 @@ reactiveclass MalSp(150) {
   				oem1.addtoBC(mId, blockId, uidtx[0], tx[0], uidtx[1], tx[1], uidtx[2], tx[2]);
   				oem2.addtoBC(mId, blockId, uidtx[0], tx[0], uidtx[1], tx[1], uidtx[2], tx[2]);
   				oem3.addtoBC(mId, blockId, uidtx[0], tx[0], uidtx[1], tx[1], uidtx[2], tx[2]);
-  				blockId = blockId + 1;
-				k = k + 1;
+  				//blockId = blockId + 1;
+				//k = k + 1;
   			}
   			send = true;
     }
     msgsrv addtoBC(int mid, int blockid, int uidtx1, int tx1, int uidtx2, int tx2, int uidtx3, int tx3) {
+		k = blockid;
 		for (int l = 0; l < p; l++) {
   			if (pendingPool[l][0] == uidtx1 && pendingPool[l][1] == tx1 && pendingPool[l][2] != 999) {
   					pendingPool[l][2] = 999;
@@ -572,8 +633,8 @@ reactiveclass MalSp(150) {
 					trustRate[mid] = trustRate[mid] + 1;		
     			} else trustRate[mid] = trustRate[mid] - 1;
     		}
-		k = k + 1;
-		blockId = blockId + 1;
+		//k = k + 1;
+		//blockId = blockId + 1;
     	} else 
     			if (trustRate[mid] == 1) {
     				if ((uidtx2 < 10) && (uidtx3 < 10)) {
@@ -587,11 +648,14 @@ reactiveclass MalSp(150) {
 							BC[k][6] = uidtx3;
 							BC[k][7] = tx3;
 							u.updateBn();	
-							trustRate[mid] = trustRate[mid] + 1;	
+							trustRate[mid] = trustRate[mid] + 1;
+							oem1.ack(mId,uidtx1,tx1);
+    						oem2.ack(mId,uidtx1,tx1);
+    						oem3.ack(mId,uidtx1,tx1);	
     					} else trustRate[mid] = trustRate[mid] - 1;
     				}
-    				k = k + 1;
-    				blockId = blockId + 1;
+    				//k = k + 1;
+    				//blockId = blockId + 1;
     			} else 
     	if (trustRate[mid] == 2) {  		
     		if (uidtx2 < 10) {
@@ -605,33 +669,57 @@ reactiveclass MalSp(150) {
 					BC[k][6] = uidtx3;
 					BC[k][7] = tx3;
 					u.updateBn();	
-					//trustRate[mid] = trustRate[mid] + 1;	
+					//trustRate[mid] = trustRate[mid] + 1;
+					oem1.ack(mId,uidtx1,tx1);
+					oem1.ack(mId,uidtx3,tx3);
+    				oem2.ack(mId,uidtx1,tx1);
+    				oem2.ack(mId,uidtx3,tx3);
+    				oem3.ack(mId,uidtx1,tx1);
+    				oem3.ack(mId,uidtx3,tx3);	
     			} else trustRate[mid] = trustRate[mid] - 1;
     		}
-    	k = k + 1;
-    	blockId = blockId + 1;
+    	//k = k + 1;
+    	//blockId = blockId + 1;
         }
         send = true;
         if (blockId % 2 == 0) {
        		nBlk = 1;
        		}
-       	if ((ctrTrx > 2) && (nBlk < 3)) { nBlk ++; self.buildblk();;}
+       	if ((ctrTrx > 2) && (nBlk < 3)) { nBlk ++; mgr.selectID(mId);}
        	/*if ((ctrTrx > 2) && (nBlk < 3) && (send == true)) {
   			nBlk ++; 
   			mgr.selectRandomly(0);
   			send = false;
   			} else mgr.selectRandomly(mId);*/
-       }	
+       }
+       msgsrv ack(int m, int utx1, int idTx1){
+    	for (int l = 0; l < 30; l++){
+			if((Ack[l][0]!= m) && (Ack[l][1]!= utx1) && (Ack[l][2]!= idTx1)){
+			 	if(Ack[l][0]== 0){
+			 		Ack[l][0]= m; 
+			 		Ack[l][1]= utx1; 
+			 		Ack[l][2]= idTx1; 
+			 		break;
+			 		}
+				}
+			}
+		as = 0;
+		for (int d = 0; d < 30; d++){
+			if((Ack[d][1]== utx1) && (Ack[d][2]== idTx1)){
+			as++;
+			}
+		}
+		if (as == 3) {assertionfail= true;}		
+    	}	
 }  
 main {
 	SmartCar u1 (oem1): (1,3);
-	SmartCar u2 (oem2): (2,6);
+	SmartCar u2 (oem2): (2,9);
 	SmartCar u3 (oem3): (3,5);
 	MalTrxGenerator u (oem4): (4,10);
 	OEM oem1(oem2,oem3,oem4,u1,man):(1);
 	OEM oem2(oem1,oem3,oem4,u2,man):(2);
 	OEM oem3(oem2,oem1,oem4,u3,man):(4);
 	MalSp oem4(oem1,oem2,oem3,u,man):(3);
-	Manager man(oem1, oem2, oem4):();
+	Manager man(oem1, oem2, oem3, oem4):();
 }
-    
